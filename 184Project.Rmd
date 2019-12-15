@@ -1,0 +1,171 @@
+---
+title: "STAT184 Project"
+author: "Xuanting Dong & Zhixuan Yang"
+date: "12/9/2019"
+output: html_notebook
+---
+
+```{r}
+
+# clean up workspace environment
+rm(list = ls())
+
+# all packages used for the assignment
+library(tidyverse)
+library(DataComputing)
+library(party)
+library(dplyr)
+library(rpart)
+library(rpart.plot)
+library(readr)
+
+# user defined functions
+
+file <- function(url){
+  file <- read_csv(url)
+  return (file)
+}
+
+rename_primary <- function(data){
+  data <-
+    data %>%
+    rename(
+      name = Name,
+      platform = Platform,
+      year = Year_of_Release,
+      genre = Genre,
+      publisher = Publisher,
+      na_sales = NA_Sales,
+      eu_sales = EU_Sales,
+      jp_sales= JP_Sales,
+      other_sales = Other_Sales,
+      global_sales =  Global_Sales,
+      critic_score = Critic_Score,
+      critic_count = Critic_Count,
+      user_score = User_Score,
+      user_count = User_Count,
+      rating = Rating
+    )
+  return (data)
+}
+
+rename_developer <- function(data){
+  data <-
+    data %>%
+    rename(
+      name = Name,
+      platform = Platform,
+      year = Year_of_Release,
+      genre = Genre,
+      publisher = Publisher,
+      rating = Rating,
+      developer = Developer
+    )
+  return (data)
+}
+```
+
+### Import the Data & Inspections
+
+```{r results = 'hide'}
+Primary <- file("~/Desktop/STAT184/Project/STAT184-Project/Video_Game_Sales_as_of_Jan_2017.csv")
+head(Primary)
+Developer <- file("~/Desktop/STAT184/Project/STAT184-Project/GameDeveloper.csv")
+head(Developer)
+```
+
+### Change the Column Names to Lower-case
+
+```{r}
+Developer <-
+  rename_developer(Developer)
+Primary <- 
+  rename_primary(Primary)
+head(Primary)
+head(Developer)
+```
+
+### Clean Data and Merge two datasets together
+```{r}
+Developer_clean <-
+  Developer %>%
+  select(name,developer)
+Games_final <-
+  Primary %>%
+  left_join(Developer_clean,by=c("name"="name"))
+Games_final <-
+  Games_final %>%
+  na.omit() %>%
+  distinct()
+head(Games_final)
+```
+
+### Data Visualization
+```{r}
+SalesByYear <-
+  Games_final %>%
+  group_by(year) %>%
+  summarise(total = sum(global_sales)) %>%
+  arrange((year))
+SalesByYear %>%
+  ggplot(aes(x = year, y = total)) +
+  ggtitle("Sales By Year") +
+  geom_line()
+```
+
+
+```{r}
+SalesByPlatform <-
+  Games_final %>%
+  group_by(platform) %>%
+  summarise(total=sum(global_sales))
+SalesByPlatform %>%
+  ggplot(aes(x = platform)) +
+  ggtitle("Sales By Year and Platform") +
+  geom_bar(aes(weight = total))
+```
+
+```{r}
+Sales_platform_user_score <-
+  party::ctree(
+    global_sales ~ critic_score + user_score,
+    data=Games_final)
+Games_final %>%
+  mutate(probability=as.numeric(predict(Sales_platform_user_score)),
+         likelihood =
+           ifelse(global_sales,
+                  probability,
+                  1-probability)) %>%
+  summarise(log_likelihood = sum(log(likelihood)))
+```
+
+```{r}
+DecisionTree <- rpart( global_sales ~ critic_score + critic_count + user_score + user_count, data = Games_final)
+prp(DecisionTree)
+```
+
+
+```{r}
+Sales_By_Year_Genre_Ranking <-
+  Games_final %>%
+  group_by(genre,rating,year) %>%
+  summarise(total = sum(global_sales))
+Sales_By_Year_Genre_Ranking %>%
+  ggplot(aes(x = year,y = total)) +
+  geom_point(aes(color = genre)) +
+  ggtitle("Sales By Year & Genre & Ranking") +
+  facet_wrap(~rating)
+```
+
+```{r}
+SalesByDeveloper <-
+  Games_final %>%
+  group_by(developer) %>%
+  summarise(total = sum(global_sales)) %>%
+  arrange(desc(total)) %>%
+  head(7)
+SalesByDeveloper %>%
+  ggplot(aes(x = developer)) +
+  geom_bar(aes(weight = total)) +
+  ggtitle("Sales By Top 7 Developers")
+```
